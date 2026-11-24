@@ -70,6 +70,8 @@ open class MainActivity : AppCompatActivity() {
 
     override fun onResume() {
         super.onResume()
-        webView.evaluateJavascript("if(typeof loadCustomBackground==='function')loadCustomBackground();if(typeof checkPendingImport==='function')checkPendingImport();", null)
+        webView.evaluateJavascript(
+            "window.dispatchEvent(new Event('focus'));if(typeof window.syncAndroidWidget==='function')window.syncAndroidWidget(false);",
+            null
+        )
     }
-}
