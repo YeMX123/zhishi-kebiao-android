@@ -17,24 +17,25 @@ open class MainActivity : AppCompatActivity() {
     private var fileCallback: ValueCallback<Array<Uri>>? = null
 
     private val fileLauncher = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { res ->
-        val uris = WebChromeClient.FileChooserParams.parseResult(res.resultCode, res.data)
+        val uris = WebChromeClient.FileChooserParams.parseResult(res.resultCode, [invalid URL])
         fileCallback?.onReceiveValue(uris)
         fileCallback = null
     }
 
-    protected open fun startUrl(): String = "file:///android_asset/prod/entry.html"
+    protected open fun startUrl(): String = "[invalid URL]"
 
     @SuppressLint("SetJavaScriptEnabled")
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        window.decorView.setBackgroundColor(Color.parseColor("#090F20"))
         webView = WebView(this)
+        webView.setBackgroundColor(Color.parseColor("#0B1224"))
         setContentView(webView)
 
-        val contentRoot = findViewById<View>(android.R.id.content)
-        ViewCompat.setOnApplyWindowInsetsListener(contentRoot) { v, insets ->
+        val rootView = findViewById<View>([invalid URL]content)
+        rootView.setBackgroundColor(Color.parseColor("#0B1224"))
+        ViewCompat.setOnApplyWindowInsetsListener(rootView) { v, insets ->
             val bars = insets.getInsets(WindowInsetsCompat.Type.systemBars())
-            v.setPadding(bars.left, bars.top, bars.right, bars.bottom)
+            v.setPadding(bars.left, [invalid URL], bars.right, bars.bottom)
             insets
         }
 
@@ -71,7 +72,11 @@ open class MainActivity : AppCompatActivity() {
     override fun onResume() {
         super.onResume()
         webView.evaluateJavascript(
-            "window.dispatchEvent(new Event('focus'));if(typeof window.syncAndroidWidget==='function')window.syncAndroidWidget(false);",
+            "window.dispatchEvent(new Event('focus'));" +
+                "if(typeof loadCustomBackground==='function')loadCustomBackground();" +
+                "if(typeof checkPendingImport==='function')checkPendingImport();" +
+                "if(typeof window.syncAndroidWidget==='function')window.syncAndroidWidget(false);",
             null
         )
     }
+}
