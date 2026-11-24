@@ -17,12 +17,12 @@ open class MainActivity : AppCompatActivity() {
     private var fileCallback: ValueCallback<Array<Uri>>? = null
 
     private val fileLauncher = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { res ->
-        val uris = WebChromeClient.FileChooserParams.parseResult(res.resultCode, [invalid URL])
+        val uris = WebChromeClient.FileChooserParams.parseResult(res.resultCode, res.data)
         fileCallback?.onReceiveValue(uris)
         fileCallback = null
     }
 
-    protected open fun startUrl(): String = "[invalid URL]"
+    protected open fun startUrl(): String = "file:///android_asset/prod/entry.html"
 
     @SuppressLint("SetJavaScriptEnabled")
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -31,11 +31,11 @@ open class MainActivity : AppCompatActivity() {
         webView.setBackgroundColor(Color.parseColor("#0B1224"))
         setContentView(webView)
 
-        val rootView = findViewById<View>([invalid URL]content)
+        val rootView = findViewById<View>(android.R.id.content)
         rootView.setBackgroundColor(Color.parseColor("#0B1224"))
         ViewCompat.setOnApplyWindowInsetsListener(rootView) { v, insets ->
             val bars = insets.getInsets(WindowInsetsCompat.Type.systemBars())
-            v.setPadding(bars.left, [invalid URL], bars.right, bars.bottom)
+            v.setPadding(bars.left, bars.top, bars.right, bars.bottom)
             insets
         }
 
