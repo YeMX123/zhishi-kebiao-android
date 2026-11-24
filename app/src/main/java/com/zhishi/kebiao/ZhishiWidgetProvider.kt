@@ -102,9 +102,7 @@ class ZhishiWidgetProvider : AppWidgetProvider() {
                     }
                 }
             }
-            rv.setTextViewText(R.id.wBody, if (lines.isNotEmpty()) lines.joinToString("
-") else "今日暂无课程 · 享受轻松时光")
-
+            rv.setTextViewText(R.id.wBody, if (lines.isNotEmpty()) lines.joinToString("\n") else "今日暂无课程 · 享受轻松时光")
             val pi = PendingIntent.getActivity(context, 0, Intent(context, MainActivity::class.java), PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
             rv.setOnClickPendingIntent(R.id.wRoot, pi)
             mgr.updateAppWidget(id, rv)
