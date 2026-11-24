@@ -9,6 +9,7 @@ import android.content.Intent
 import android.content.res.Configuration
 import android.graphics.BitmapFactory
 import android.graphics.Color
+import android.net.Uri
 import android.util.Base64
 import android.view.View
 import android.widget.RemoteViews
@@ -42,43 +43,54 @@ class ZhishiWidgetProvider : AppWidgetProvider() {
             rv.setInt(R.id.wRoot, "setBackgroundResource", if (isDark) R.drawable.widget_bg_dark else R.drawable.widget_bg_light)
             rv.setTextColor(R.id.wHeader, Color.parseColor(if (isDark) "#FFFFFFFF" else "#FF0F172A"))
             rv.setTextColor(R.id.wBadge, Color.parseColor(if (isDark) "#FF7DD3FC" else "#FF2563EB"))
-            rv.setTextColor(R.id.wBody, Color.parseColor(if (isDark) "#FFE2E8F0" else "#FF334155"))
+            rv.setTextColor(R.id.wBody, Color.parseColor(if (isDark) "#FFF1F5F9" else "#FF1E293B"))
 
-            // Custom cropped widget background image (if user set one)
             val bgRaw = prefs.getString("zs_widget_bg_cfg_v2", "") ?: ""
             var hasCustomImg = false
             if (bgRaw.isNotEmpty()) {
                 runCatching {
                     val src = JSONObject(bgRaw).optString("src", "")
-                    val idx = src.indexOf("base64,")
-                    if (idx != -1) {
-                        val bytes = Base64.decode(src.substring(idx + 7), Base64.DEFAULT)
-                        val bmp = BitmapFactory.decodeByteArray(bytes, 0, bytes.size)
-                        if (bmp != null) {
-                            rv.setImageViewBitmap(R.id.wBgImg, bmp)
-                            rv.setViewVisibility(R.id.wBgImg, View.VISIBLE)
-                            hasCustomImg = true
+                    val bmp = when {
+                        src.contains("base64,") -> {
+                            val bytes = Base64.decode(src.substringAfter("base64,"), Base64.DEFAULT)
+                            BitmapFactory.decodeByteArray(bytes, 0, bytes.size)
                         }
+                        src.startsWith("file://") -> BitmapFactory.decodeFile(Uri.parse(src).path)
+                        src.startsWith("content://") -> context.contentResolver.openInputStream(Uri.parse(src))?.use { BitmapFactory.decodeStream(it) }
+                        else -> null
+                    }
+                    if (bmp != null) {
+                        rv.setImageViewBitmap(R.id.wBgImg, bmp)
+                        rv.setViewVisibility(R.id.wBgImg, View.VISIBLE)
+                        hasCustomImg = true
                     }
                 }
             }
             if (!hasCustomImg) rv.setViewVisibility(R.id.wBgImg, View.GONE)
 
-            // Format today's courses / holiday card from course_data
             val cal = Calendar.getInstance()
             val todayStr = SimpleDateFormat("M月d日 E", Locale.CHINESE).format(cal.time)
             rv.setTextViewText(R.id.wHeader, todayStr)
-            rv.setTextViewText(R.id.wBadge, "知时课表")
 
             val raw = prefs.getString("course_data", "") ?: ""
-            val lines = mutableListOf<String>()
+            var weekTag = "知时课表"
+            var bodyText = "请打开知时课表同步课程"
             if (raw.isNotEmpty()) {
                 runCatching {
-                    val dayStart = Calendar.getInstance().apply { set(Calendar.HOUR_OF_DAY, 0); set(Calendar.MINUTE, 0); set(Calendar.SECOND, 0) }.timeInMillis / 1000
+                    val root = JSONObject(raw)
+                    val dataObj = root.optJSONObject("data")
+                    val wkNum = dataObj?.optString("cur_week_num", "") ?: ""
+                    if (wkNum.isNotEmpty()) weekTag = "第${wkNum}周"
+                    val arr = dataObj?.optJSONArray("list") ?: root.optJSONArray("course_list")
+                    val dayStart = Calendar.getInstance().apply {
+                        set(Calendar.HOUR_OF_DAY, 0); set(Calendar.MINUTE, 0); set(Calendar.SECOND, 0); set(Calendar.MILLISECOND, 0)
+                    }.timeInMillis / 1000
                     val dayEnd = dayStart + 86400
-                    val arr = JSONObject(raw).optJSONArray("course_list")
+                    val tomEnd = dayEnd + 86400
+
+                    val todayItems = mutableListOf<Pair<Long, String>>()
+                    val tomItems = mutableListOf<Pair<Long, String>>()
                     if (arr != null) {
-                        val items = mutableListOf<Pair<Long, String>>()
                         for (i in 0 until arr.length()) {
                             val c = arr.getJSONObject(i)
                             val name = c.optString("course_name", "")
@@ -90,19 +102,26 @@ class ZhishiWidgetProvider : AppWidgetProvider() {
                                 for (t in 0 until times.length()) {
                                     val tup = times.optJSONArray(t) ?: continue
                                     val sec = tup.optLong(2, 0L)
-                                    if (sec in dayStart until dayEnd) {
-                                        val hm = SimpleDateFormat("HH:mm", Locale.getDefault()).format(Date(sec * 1000))
-                                        items.add(sec to "$hm  $name" + if (loc.isNotEmpty()) " · $loc" else "")
-                                    }
+                                    val hm = SimpleDateFormat("HH:mm", Locale.getDefault()).format(Date(sec * 1000))
+                                    val line = "$hm  $name" + if (loc.isNotEmpty()) " · $loc" else ""
+                                    if (sec in dayStart until dayEnd) todayItems.add(sec to line)
+                                    else if (sec in dayEnd until tomEnd) tomItems.add(sec to line)
                                 }
                             }
                         }
-                        items.sortBy { it.first }
-                        for ((_, txt) in items.take(4)) lines.add(txt)
+                    }
+                    todayItems.sortBy { it.first }
+                    tomItems.sortBy { it.first }
+                    bodyText = when {
+                        todayItems.isNotEmpty() -> todayItems.take(5).joinToString("\n") { it.second }
+                        tomItems.isNotEmpty() -> "今日无课 · 明日预告：\n" + tomItems.take(4).joinToString("\n") { it.second }
+                        else -> "今日与明日暂无课程 · 享受轻松时光"
                     }
                 }
             }
-            rv.setTextViewText(R.id.wBody, if (lines.isNotEmpty()) lines.joinToString("\n") else "今日暂无课程 · 享受轻松时光")
+            rv.setTextViewText(R.id.wBadge, weekTag)
+            rv.setTextViewText(R.id.wBody, bodyText)
+
             val pi = PendingIntent.getActivity(context, 0, Intent(context, MainActivity::class.java), PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
             rv.setOnClickPendingIntent(R.id.wRoot, pi)
             mgr.updateAppWidget(id, rv)
