@@ -2,11 +2,15 @@ package com.zhishi.kebiao
 
 import android.annotation.SuppressLint
 import android.content.Intent
+import android.graphics.Color
 import android.net.Uri
 import android.os.Bundle
+import android.view.View
 import android.webkit.*
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
+import androidx.core.view.ViewCompat
+import androidx.core.view.WindowInsetsCompat
 
 open class MainActivity : AppCompatActivity() {
     protected lateinit var webView: WebView
@@ -23,8 +27,16 @@ open class MainActivity : AppCompatActivity() {
     @SuppressLint("SetJavaScriptEnabled")
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        window.decorView.setBackgroundColor(Color.parseColor("#090F20"))
         webView = WebView(this)
         setContentView(webView)
+
+        val contentRoot = findViewById<View>(android.R.id.content)
+        ViewCompat.setOnApplyWindowInsetsListener(contentRoot) { v, insets ->
+            val bars = insets.getInsets(WindowInsetsCompat.Type.systemBars())
+            v.setPadding(bars.left, bars.top, bars.right, bars.bottom)
+            insets
+        }
 
         webView.settings.apply {
             javaScriptEnabled = true
