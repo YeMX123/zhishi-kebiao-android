@@ -1,0 +1,113 @@
+package com.zhishi.kebiao
+
+import android.app.PendingIntent
+import android.appwidget.AppWidgetManager
+import android.appwidget.AppWidgetProvider
+import android.content.ComponentName
+import android.content.Context
+import android.content.Intent
+import android.content.res.Configuration
+import android.graphics.BitmapFactory
+import android.graphics.Color
+import android.util.Base64
+import android.view.View
+import android.widget.RemoteViews
+import org.json.JSONObject
+import java.text.SimpleDateFormat
+import java.util.*
+
+class ZhishiWidgetProvider : AppWidgetProvider() {
+    override fun onUpdate(context: Context, mgr: AppWidgetManager, ids: IntArray) {
+        for (id in ids) updateWidget(context, mgr, id)
+    }
+
+    companion object {
+        fun updateAll(context: Context) {
+            val mgr = AppWidgetManager.getInstance(context)
+            val ids = mgr.getAppWidgetIds(ComponentName(context, ZhishiWidgetProvider::class.java))
+            for (id in ids) updateWidget(context, mgr, id)
+        }
+
+        private fun updateWidget(context: Context, mgr: AppWidgetManager, id: Int) {
+            val prefs = context.getSharedPreferences("zhishi_storage", Context.MODE_PRIVATE)
+            val theme = prefs.getString("zs_widget_theme_v1", "auto") ?: "auto"
+            val sysDark = (context.resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK) == Configuration.UI_MODE_NIGHT_YES
+            val isDark = when (theme) {
+                "dark" -> true
+                "light" -> false
+                else -> sysDark
+            }
+
+            val rv = RemoteViews(context.packageName, R.layout.widget_zhishi)
+            rv.setInt(R.id.wRoot, "setBackgroundResource", if (isDark) R.drawable.widget_bg_dark else R.drawable.widget_bg_light)
+            rv.setTextColor(R.id.wHeader, Color.parseColor(if (isDark) "#FFFFFFFF" else "#FF0F172A"))
+            rv.setTextColor(R.id.wBadge, Color.parseColor(if (isDark) "#FF7DD3FC" else "#FF2563EB"))
+            rv.setTextColor(R.id.wBody, Color.parseColor(if (isDark) "#FFE2E8F0" else "#FF334155"))
+
+            // Custom cropped widget background image (if user set one)
+            val bgRaw = prefs.getString("zs_widget_bg_cfg_v2", "") ?: ""
+            var hasCustomImg = false
+            if (bgRaw.isNotEmpty()) {
+                runCatching {
+                    val src = JSONObject(bgRaw).optString("src", "")
+                    val idx = src.indexOf("base64,")
+                    if (idx != -1) {
+                        val bytes = Base64.decode(src.substring(idx + 7), Base64.DEFAULT)
+                        val bmp = BitmapFactory.decodeByteArray(bytes, 0, bytes.size)
+                        if (bmp != null) {
+                            rv.setImageViewBitmap(R.id.wBgImg, bmp)
+                            rv.setViewVisibility(R.id.wBgImg, View.VISIBLE)
+                            hasCustomImg = true
+                        }
+                    }
+                }
+            }
+            if (!hasCustomImg) rv.setViewVisibility(R.id.wBgImg, View.GONE)
+
+            // Format today's courses / holiday card from course_data
+            val cal = Calendar.getInstance()
+            val todayStr = SimpleDateFormat("M月d日 E", Locale.CHINESE).format(cal.time)
+            rv.setTextViewText(R.id.wHeader, todayStr)
+            rv.setTextViewText(R.id.wBadge, "知时课表")
+
+            val raw = prefs.getString("course_data", "") ?: ""
+            val lines = mutableListOf<String>()
+            if (raw.isNotEmpty()) {
+                runCatching {
+                    val dayStart = Calendar.getInstance().apply { set(Calendar.HOUR_OF_DAY, 0); set(Calendar.MINUTE, 0); set(Calendar.SECOND, 0) }.timeInMillis / 1000
+                    val dayEnd = dayStart + 86400
+                    val arr = JSONObject(raw).optJSONArray("course_list")
+                    if (arr != null) {
+                        val items = mutableListOf<Pair<Long, String>>()
+                        for (i in 0 until arr.length()) {
+                            val c = arr.getJSONObject(i)
+                            val name = c.optString("course_name", "")
+                            val groups = c.optJSONArray("groups") ?: continue
+                            for (g in 0 until groups.length()) {
+                                val grp = groups.getJSONObject(g)
+                                val loc = grp.optString("loc", "")
+                                val times = grp.optJSONArray("times") ?: continue
+                                for (t in 0 until times.length()) {
+                                    val tup = times.optJSONArray(t) ?: continue
+                                    val sec = tup.optLong(2, 0L)
+                                    if (sec in dayStart until dayEnd) {
+                                        val hm = SimpleDateFormat("HH:mm", Locale.getDefault()).format(Date(sec * 1000))
+                                        items.add(sec to "$hm  $name" + if (loc.isNotEmpty()) " · $loc" else "")
+                                    }
+                                }
+                            }
+                        }
+                        items.sortBy { it.first }
+                        for ((_, txt) in items.take(4)) lines.add(txt)
+                    }
+                }
+            }
+            rv.setTextViewText(R.id.wBody, if (lines.isNotEmpty()) lines.joinToString("
+") else "今日暂无课程 · 享受轻松时光")
+
+            val pi = PendingIntent.getActivity(context, 0, Intent(context, MainActivity::class.java), PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
+            rv.setOnClickPendingIntent(R.id.wRoot, pi)
+            mgr.updateAppWidget(id, rv)
+        }
+    }
+}
